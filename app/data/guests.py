@@ -1,7 +1,8 @@
 # datos mockeados de los huéspedes, simulacion de una base de datos
 
-GUESTS = [
-    {"guest_name": "Ana López", "room": "101", "has_children": True},
-    {"guest_name": "Carlos Pérez", "room": "102", "has_children": False},
-    {"guest_name": "Lucía Gómez", "room": "103", "has_children": True},
-]
+GUESTS = {
+    "101" : {"guest_name": "Martina López",  "has_children": True},
+    "102" : {"guest_name": "Iker Pérez",  "has_children": False},
+    "103" : {"guest_name": "Vega Gómez",  "has_children": True},
+    "104" : {"guest_name": "Aitana Sánchez",  "has_children": False},
+}
