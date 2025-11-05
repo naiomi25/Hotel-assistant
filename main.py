@@ -1,14 +1,15 @@
 from langgraph.graph import StateGraph, START, END
-from state import initial_state
-# from nodes.greeting import node_greeting
+from app.state.state import initial_state
+from app.nodes.nodo_guest_info import nodo_guest_info
+from app.nodes.nodo_weather import nodo_weather
 
 
 def build_graph():
     builder = StateGraph(dict)   
-    # builder.add_node("greeting", node_greeting)
-    # builder.add_node("weather", node_weather) 
-    builder.add_edge(START, "greeting")
-    builder.add_edge("greeting", END)
+    builder.add_node("welcome", nodo_guest_info)
+    builder.add_node("weather", nodo_weather) 
+    builder.add_edge(START, "welcome")
+    builder.add_edge("welcome", 'weather')
     graph = builder.compile()
     # generar PNG para visualizar
     graph.draw_mermaid_png("graph_stage_0.png")
