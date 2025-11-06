@@ -1,16 +1,30 @@
 from langgraph.graph import StateGraph, START, END
 from app.nodes.nodo_activities import nodo_activities
 from app.nodes.nodo_antivities_outdoor import nodo_activities_outdoor
+from app.nodes.nodo_check_human import nodo_check_human
+from app.nodes.nodo_city import nodo_city
+from app.nodes.nodo_select_activity import nodo_select_activity
 from app.state.state import initial_state
 from app.state.state import InitialState
 from app.nodes.nodo_guest_info import nodo_guest_info
 from app.nodes.nodo_weather import nodo_weather
+from app.nodes.nodo_booking_confirm import nodo_booking_confirm
+
 
 def  condicional_funcion_activities(state):
-    return state["weather_filter"]
+    return "outdoor" if state["weather_filter"] == "sol" else "indoor"
+
+def condicional_user_city_or_hotel(state):
+    return "city" if state['selected_activities'] == [] else "hotel"
+
+def condicional_human_check(state):
+    
+    return "hotel" if state.get("available_activities") else "city"
+
+
 
 def build_graph():
-    # builder = StateGraph(dict)
+    
     builder = StateGraph(InitialState)
 
     # definimos los nodos
@@ -19,6 +33,10 @@ def build_graph():
     builder.add_node("weather", nodo_weather) 
     builder.add_node('activities_indoor', nodo_activities)
     builder.add_node('activities_outdoor', nodo_activities_outdoor)
+    builder.add_node('select_activity', nodo_select_activity)
+    builder.add_node('human_check', nodo_check_human)
+    builder.add_node('booking_confirm', nodo_booking_confirm)
+    builder.add_node('city', nodo_city)
     
     
      # definimos las transiciones
@@ -34,11 +52,31 @@ def build_graph():
             "indoor": 'activities_indoor',
         }
     )
+    builder.add_edge("activities_outdoor", "select_activity")
+    builder.add_edge("activities_indoor", "select_activity")
+    builder.add_conditional_edges(
+        "select_activity",
+        condicional_user_city_or_hotel,
+        {
+            "city": 'city',
+            "hotel": 'human_check',
+        }
+    )
+
+    builder.add_conditional_edges(
+        "human_check", 
+        condicional_human_check,
+        {
+            "city": 'city',
+            "hotel": 'booking_confirm',
+        })
+    builder.add_edge("city", END)
+    builder.add_edge("booking_confirm", END)
     
     graph = builder.compile()
     
-    # # generar PNG para visualizar
-    # graph.draw_mermaid_png("graph_stage_0.png")
+ 
+    graph.draw_mermaid_png("graph.png")
     return graph
 
 if __name__ == "__main__":
@@ -46,6 +84,8 @@ if __name__ == "__main__":
     graph = build_graph()
     # Ejemplo: invocar con estado simulado (como vendría del front)
     state = initial_state()
-    # state["guest_info"]["room"] = "103"
+    state["guest_info"]["room"] = "103"
+    # state = nodo_select_activity(state, ["A1", "A2"])  # Simulamos selección de actividades
     result = graph.invoke(state)
     print("Resultado del grafo (state):", result)
+
