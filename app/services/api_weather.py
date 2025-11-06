@@ -31,9 +31,9 @@ def api_weather():
     #    tenemos que mapear el clima a "sol" o "lluvia" para filtrar actividades
         
         if "lluvia" in description or "tormenta" in description:
-            weather_filter = "lluvia"
+            weather_filter = "indoor"
         else:
-            weather_filter = "sol"
+            weather_filter = "outdoor"
 
         # devolvemos la description tal cual para el prompt y el filtro para las actividades
         
@@ -46,5 +46,6 @@ def api_weather():
           
             "description": "No se pudo obtener el clima",
             "temp": None,
-            "weather_filter": "sol"
+            "weather_filter": "indoor",
         }
+
