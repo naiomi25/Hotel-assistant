@@ -1,4 +1,5 @@
 from typing import Dict, Any
+from app.llm.llm import generate_response
 from app.prompts.prompts import activities_prompt
 from app.state import state
 from app.state.state import InitialState
@@ -19,6 +20,7 @@ def nodo_activities(state: InitialState) -> tuple[InitialState, str]:
     state["unavailable_activities"] = unavailable_activities
     
     
-    message = activities_prompt(state)
-    
-    return state, message
+    prompt = activities_prompt(state)
+    ai_message = generate_response(prompt)
+
+    return state, ai_message

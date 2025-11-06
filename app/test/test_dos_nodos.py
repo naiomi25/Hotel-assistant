@@ -20,16 +20,16 @@ def create_test_state() -> InitialState:
     }
 
 state = create_test_state()
-state , message = nodo_guest_info(state)
+state , ai_message = nodo_guest_info(state)
 print("\n🟦 Mensaje inicial:")
-print(message)
+print(ai_message)
 room_number = "101"
-state , message = nodo_guest_info(state, room_number)
+state , ai_message = nodo_guest_info(state, room_number)
 print("\n🟩 Mensaje tras introducir la habitación:")
-print(message)
+print(ai_message)
 state = nodo_weather(state)
 print(f" \n🌤 (debug)\nClima actual:\nDescripción: {state['weather_description']}\nFilter: {state['weather_filter']}")
-state, message = nodo_activities(state)
+state, ai_message = nodo_activities(state)
 print("\n🎯 (debug) Estado final después de ambos nodos:", state)
-print("\n 💬 (debug) Mensaje de actividades:\n", message)
+print("\n 💬 (debug) Mensaje de actividades:\n", ai_message)
 
