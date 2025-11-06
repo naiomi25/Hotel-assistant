@@ -27,17 +27,24 @@ def api_weather():
       
         description = data["weather"][0]["description"]
         temperature = round(data["main"]["temp"])
+        
+    #    tenemos que mapear el clima a "sol" o "lluvia" para filtrar actividades
+        
+        if "lluvia" in description or "tormenta" in description:
+            weather_filter = "lluvia"
+        else:
+            weather_filter = "sol"
 
-        return {"description": description, "temp": temperature}
+        # devolvemos la description tal cual para el prompt y el filtro para las actividades
+        
+        return {"description": description, "temp": temperature, "weather_filter": weather_filter}
             
             
-           
-     
-
     except requests.RequestException as e:
         print(f"⚠️ Error al obtener el clima: {e}")
         return {
           
             "description": "No se pudo obtener el clima",
-            "temp": None
+            "temp": None,
+            "weather_filter": "sol"
         }

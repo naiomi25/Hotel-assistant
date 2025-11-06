@@ -10,6 +10,8 @@ class InitialState(TypedDict):
     
     guest_info: UserInfo
     weather: str
+    weather_description: str
+    weather_filter: str
     selected_activities: List[str]
     available_activities: List[str]
     unavailable_activities: List[str]
