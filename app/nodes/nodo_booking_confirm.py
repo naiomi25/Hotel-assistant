@@ -4,8 +4,12 @@ from app.state.state import InitialState
 
 def nodo_booking_confirm(state: InitialState) -> InitialState:
     
-    prompt = selected_activities_prompt(state)
-    ai_message = generate_response(prompt)
+    selected = state.get("selected_activities", [])
+    available = state.get("available_activities", [])
+    
+    if selected and available:
+        prompt = selected_activities_prompt(state)
+        ai_message = generate_response(prompt)
 
     state["assistant_message"] = ai_message
     state["messages"].append({

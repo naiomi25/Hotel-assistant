@@ -4,6 +4,8 @@ from app.nodes.nodo_antivities_outdoor import nodo_activities_outdoor
 from app.nodes.nodo_check_human import nodo_check_human
 from app.nodes.nodo_city import nodo_city
 from app.nodes.nodo_select_activity import nodo_select_activity
+from app.nodes.nodo_transport_offer import nodo_transport_offer
+from app.nodes.nodo_transport_response import nodo_transport_response
 from app.state.state import initial_state
 from app.state.state import InitialState
 from app.nodes.nodo_guest_info import nodo_guest_info
@@ -37,8 +39,9 @@ def build_graph():
     builder.add_node('human_check', nodo_check_human)
     builder.add_node('booking_confirm', nodo_booking_confirm)
     builder.add_node('city', nodo_city)
-    
-    
+    builder.add_node('transport_offer', nodo_transport_offer)
+    builder.add_node('transport_response', nodo_transport_response)
+
      # definimos las transiciones
     
     
@@ -70,7 +73,9 @@ def build_graph():
             "city": 'city',
             "hotel": 'booking_confirm',
         })
-    builder.add_edge("city", END)
+    builder.add_edge("city",'transport_offer')
+    builder.add_edge("transport_offer", "transport_response")
+    builder.add_edge("transport_response", END)
     builder.add_edge("booking_confirm", END)
     
     graph = builder.compile()
@@ -85,6 +90,12 @@ if __name__ == "__main__":
     # Ejemplo: invocar con estado simulado (como vendría del front)
     state = initial_state()
     state["guest_info"]["room"] = "103"
+    state = nodo_transport_offer(state)
+    
+    # Simulamos respuesta del huésped
+    respuesta_usuario = input("Cliente: ")
+    result = nodo_transport_response(state, respuesta_usuario)
+    print(result["assistant_message"])
    
     result = graph.invoke(state)
     print("Resultado del grafo (state):", result)
