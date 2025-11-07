@@ -76,7 +76,7 @@ def build_graph():
     graph = builder.compile()
     
  
-    graph.draw_mermaid_png("graph.png")
+    # graph.get_graph().draw_png("hotel_graph.png")
     return graph
 
 if __name__ == "__main__":
@@ -85,7 +85,7 @@ if __name__ == "__main__":
     # Ejemplo: invocar con estado simulado (como vendría del front)
     state = initial_state()
     state["guest_info"]["room"] = "103"
-    # state = nodo_select_activity(state, ["A1", "A2"])  # Simulamos selección de actividades
+   
     result = graph.invoke(state)
     print("Resultado del grafo (state):", result)
 

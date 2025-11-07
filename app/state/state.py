@@ -22,6 +22,7 @@ class InitialState(TypedDict):
     unavailable_activities: List[str]
     city_activities: List[str]
     final_choice: str
+    city_guide: Optional[str]
     
 
 def initial_state() -> InitialState:
@@ -42,4 +43,5 @@ def initial_state() -> InitialState:
         "unavailable_activities": [],
         "city_activities": [],
         "final_choice": "",
+        "city_guide": None,
     }
