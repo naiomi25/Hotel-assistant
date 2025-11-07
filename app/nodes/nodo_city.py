@@ -8,7 +8,7 @@ def nodo_city(state: InitialState) -> InitialState:
     selected = state.get("selected_activities", [])
     available = state.get("available_activities", [])
     
-    state["city_guide"] = "app/data_db/guia_turismo.pdf"
+    state["city_guide"] = "guia_turismo.pdf"
     
     if not selected :
         print("(debug) El huésped no ha seleccionado actividades.")
