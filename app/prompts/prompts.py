@@ -80,6 +80,7 @@ Contexto: El huésped {state['guest_info']['name']} viaja con niños: {'Sí' if 
 Las actividades seleccionadas no tienen disponibilidad.
 
 Tarea:
+no saludes de nuevo al huésped.
 1.  Disculpa brevemente la falta de disponibilidad.
 2.  Menciona que, en su lugar, le vas a proporcionar la guía de la ciudad con actividades fuera del hotel (esto será la mejor alternativa).
 3.  Si viaja con niños, añade un comentario amable.
@@ -104,7 +105,7 @@ def offer_transport_prompt(state) -> str:
 Contexto: El huésped {state['guest_info']['name']} acaba de recibir la guía turística.
 
 Tarea:
-Ofrécele reservar un transporte (taxi o guagua) desde el hotel con un tono servicial y amable. Pregúntale si le gustaría que se lo gestionemos.
+no vuelvas a saludarla, Ofrécele reservar un transporte (taxi o guagua) desde el hotel con un tono servicial y amable. Pregúntale si le gustaría que se lo gestionemos.
 """
 
 def response_ok_transport_prompt(state) -> str:

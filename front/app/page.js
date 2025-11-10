@@ -7,15 +7,23 @@ const API_URL = "http://127.0.0.1:5000";
 const ChatApp = () => {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
-  const [state, setState] = useState({});
+  const [state, setState] = useState({ session_id: null });
   const [isActivitySelectionActive, setIsActivitySelectionActive] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
   const [isWaitingForReceptionist, setIsWaitingForReceptionist] = useState(false);
   const scrollRef = useRef(null);
   const pollingRef = useRef(null);
-
   const session_id = state.session_id || null;
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedSession = sessionStorage.getItem("session_id");
+      if (savedSession) {
+        setState((prev) => ({ ...prev, session_id: savedSession }));
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -45,14 +53,14 @@ const ChatApp = () => {
 
       const data = await res.json();
       console.log("📊 Status response:", data.status, data.has_interrupt);
-      
+
       if (data.status === "completed") {
         console.log("✅ Sesión completada por recepcionista!");
-        
+
         // Actualizar estado
         setState(data.state || {});
         setIsWaitingForReceptionist(false);
-        
+
         // Añadir mensaje del asistente
         if (data.assistant_message) {
           setMessages((prev) => [
@@ -93,7 +101,7 @@ const ChatApp = () => {
   useEffect(() => {
     if (isWaitingForReceptionist && session_id) {
       console.log("🔄 Iniciando polling para session:", session_id);
-      pollingRef.current = setInterval(checkSessionStatus, 3000); // Cada 3 segundos
+      pollingRef.current = setInterval(checkSessionStatus, 7000); // Cada 7 segundos
     } else {
       if (pollingRef.current) {
         clearInterval(pollingRef.current);
@@ -109,89 +117,145 @@ const ChatApp = () => {
   }, [isWaitingForReceptionist, session_id, checkSessionStatus]);
 
   const handleApiCall = useCallback(
-    async (user_message, is_user_input = true) => {
-      if (!user_message.trim()) return;
-      setIsLoading(true);
+  async (user_message, is_user_input = true) => {
+    if (!user_message.trim()) return;
+    setIsLoading(true);
 
-      const newMessages = is_user_input
-        ? [...messages, { role: "user", content: user_message }]
-        : messages;
+    const newMessages = is_user_input
+      ? [...messages, { role: "user", content: user_message }]
+      : messages;
 
-      if (is_user_input) setMessages(newMessages);
-      setInput("");
+    if (is_user_input) setMessages(newMessages);
+    setInput("");
 
-      try {
-        const res = await fetch(`${API_URL}/api/start_conversation`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ state, user_message }),
-        });
+    try {
+      console.log("🔍 Estado completo antes de enviar:", {
+        waiting_for_transport: state.waiting_for_transport,
+        waiting_for_room: state.waiting_for_room,
+        session_id: state.session_id,
+        user_message: user_message,
+        full_state: state,
+      });
 
-        if (!res.ok)
-          throw new Error(`Error ${res.status}: ${res.statusText}`);
+      const res = await fetch(`${API_URL}/api/start_conversation`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ state, user_message }),
+      });
 
-        const data = await res.json();
-        
-        // ⭐ GUARDAR SIEMPRE EL SESSION_ID
-        console.log("📋 Session ID:", data.session_id || data.state?.session_id);
-        setState(data.state);
+      if (!res.ok) throw new Error(`Error ${res.status}: ${res.statusText}`);
 
-        // 🛑 Si hay INTERRUPT
-        if (data.status === "interrupted") {
-          console.log("🛑 INTERRUPT detectado, activando polling...", data.session_id || data.state?.session_id);
-          setMessages((prev) => [
-            ...newMessages,
-            {
-              role: "system",
-              content: data.assistant_message || "🛑 Esperando confirmación del recepcionista...",
-              isInterrupt: true,
-              session_id: data.session_id || data.state?.session_id
-            },
-          ]);
-          setIsActivitySelectionActive(false);
-          setIsWaitingForReceptionist(true); // ⭐ ACTIVAR POLLING
-          console.log("✅ isWaitingForReceptionist activado");
-          setIsLoading(false);
-          return;
-        }
+      const data = await res.json();
 
-        // ✅ Flujo normal
-        const assistantMessage = {
-          role: "assistant",
-          content: data.assistant_message,
-        };
-        setMessages((prev) => [...newMessages, assistantMessage]);
+      // 💫 Pequeña pausa para asegurar que React renderiza en orden
+      await new Promise((resolve) => setTimeout(resolve, 400));
 
-        const hasActivities = data.state?.available_activities?.length > 0;
-        setIsActivitySelectionActive(hasActivities && !data.state?.paused_at_node);
+      // ⭐ Guardar o recuperar el session_id
+      console.log("📋 Session ID:", data.session_id || data.state?.session_id);
+      setState(data.state);
+      if (data.state?.session_id) {
+        sessionStorage.setItem("session_id", data.state.session_id);
+      } else if (data.session_id) {
+        sessionStorage.setItem("session_id", data.session_id);
+      }
 
-        if (data.pdf_url) {
-          setTimeout(() => {
-            setMessages((prev) => [
-              ...prev,
-              {
-                role: "assistant",
-                content: "📘 Aquí tienes la guía turística:",
-                pdf_url: data.pdf_url,
-              },
-            ]);
-          }, 500);
-        }
-      } catch (error) {
-        console.error("Error en la API:", error);
+      // 💡 Reinyectar el session_id si el backend no lo devuelve
+      setState((prev) => ({
+        ...data.state,
+        session_id:
+          data.state?.session_id ||
+          data.session_id ||
+          sessionStorage.getItem("session_id"),
+      }));
+
+      // 🛑 Si hay INTERRUPT (recepcionista)
+      if (data.status === "interrupted") {
+        console.log(
+          "🛑 INTERRUPT detectado, activando polling...",
+          data.session_id || data.state?.session_id
+        );
         setMessages((prev) => [
           ...newMessages,
           {
-            role: "assistant",
-            content: `⚠️ Error: ${error.message}`,
+            role: "system",
+            content:
+              data.assistant_message ||
+              "🛑 Esperando confirmación del recepcionista...",
+            isInterrupt: true,
+            session_id: data.session_id || data.state?.session_id,
           },
         ]);
-      } finally {
+        setIsActivitySelectionActive(false);
+        setIsWaitingForReceptionist(true);
         setIsLoading(false);
+        return;
       }
-    },
-    [messages, state]
-  );
+
+      // ✅ Flujo normal
+      const backendMessages = data.state?.messages || [];
+      const isResumeResponse = data.status === "resumed";
+      const existingContents = new Set(messages.map((m) => m.content));
+
+      const newAssistantMessages = backendMessages
+        .filter((msg) => {
+          if (msg.role !== "assistant") return false;
+          if (isResumeResponse) return true; // mostrar todo al reanudar
+          return !existingContents.has(msg.content);
+        })
+        .map((msg) => ({
+          role: "assistant",
+          content: msg.content,
+        }));
+
+      console.log("🧩 Mensajes del backend:", newAssistantMessages);
+
+      // 💬 Añadir todos los mensajes nuevos en orden correcto
+      setMessages((prev) => [...prev, ...newAssistantMessages]);
+
+      // Agregar mensaje final explícito si no está duplicado
+      if (data.assistant_message && !existingContents.has(data.assistant_message)) {
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: data.assistant_message },
+        ]);
+      }
+
+      // Activar selección si aplica
+      const hasActivities = data.state?.available_activities?.length > 0;
+      setIsActivitySelectionActive(
+        hasActivities && !data.state?.paused_at_node
+      );
+
+      // Mostrar PDF si existe
+      if (data.pdf_url) {
+        setTimeout(() => {
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content: "📘 Aquí tienes la guía turística:",
+              pdf_url: data.pdf_url,
+            },
+          ]);
+        }, 500);
+      }
+    } catch (error) {
+      console.error("Error en la API:", error);
+      setMessages((prev) => [
+        ...newMessages,
+        {
+          role: "assistant",
+          content: `⚠️ Error: ${error.message}`,
+        },
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
+  },
+  [messages, state]
+);
+
+
 
   const sendSpecialCommand = (command, shouldBeDisplayed = false) => {
     if (shouldBeDisplayed) {
@@ -243,29 +307,6 @@ const ChatApp = () => {
         Nayra | Asistente Hotel Horizonte Azul 🌴
       </h1>
 
-      {/* ⭐ INDICADOR MEJORADO CON SESSION_ID */}
-      {isPausedForReceptionist && session_id && (
-        <div className="w-full max-w-2xl mt-4 p-4 bg-yellow-50 border-2 border-yellow-400 rounded-xl shadow-lg text-center">
-          <p className="text-lg font-bold text-yellow-900 mb-2">
-            🛑 PAUSA ACTIVA: Esperando confirmación del recepcionista
-          </p>
-          <p className="text-sm text-yellow-800 mb-3">
-            El recepcionista debe validar la disponibilidad usando este código:
-          </p>
-          <div className="flex items-center justify-center gap-2">
-            <code className="bg-yellow-200 px-4 py-2 rounded-lg text-sm font-mono font-bold text-yellow-900 border border-yellow-300">
-              {session_id}
-            </code>
-            <button
-              onClick={copySessionId}
-              className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-2 rounded-lg text-sm font-semibold transition"
-            >
-              📋 Copiar
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* 💬 Área del chat */}
       <div
         ref={scrollRef}
@@ -280,27 +321,36 @@ const ChatApp = () => {
         {messages.map((msg, i) => (
           <div
             key={i}
-            className={`p-3 rounded-xl max-w-[90%] sm:max-w-[75%] ${
-              msg.role === "user"
-                ? "bg-blue-600 text-white self-end ml-auto"
-                : msg.role === "system"
-                ? "bg-red-200 text-red-900 self-start border border-red-300 text-xs italic"
+            className={`p-3 rounded-xl max-w-[90%] sm:max-w-[75%] ${msg.role === "user"
+              ? "bg-blue-600 text-white self-end ml-auto"
+              : msg.role === "system"
+                ? "bg-green-200 text-red-900 self-start border border-red-300 text-xs italic"
                 : "bg-gray-100 text-gray-800 self-start"
-            }`}
+              }`}
           >
             <p className="text-sm leading-relaxed whitespace-pre-wrap">
               {msg.content}
             </p>
 
+
+
             {/* ⭐ Mostrar session_id en el mensaje de interrupt */}
-            {msg.isInterrupt && msg.session_id && (
+            {msg.isInterrupt && msg.session_id && isPausedForReceptionist && (
               <div className="mt-3 p-2 bg-yellow-100 border border-yellow-300 rounded text-xs">
-                <p className="font-semibold text-yellow-900 mb-1">
+                {/* <p className="font-semibold text-yellow-900 mb-1">
                   🔑 Código para recepcionista:
                 </p>
                 <code className="text-yellow-800 font-mono">
                   {msg.session_id}
+                </code> */}
+                <code className="bg-yellow-200 px-4 py-2 rounded-lg text-sm font-mono font-bold text-yellow-900 border border-yellow-300">
+                  {session_id}
                 </code>
+                <button
+                  onClick={copySessionId}
+                  className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-2 rounded-lg text-sm font-semibold transition">
+                  📋 Copiar
+                </button>
               </div>
             )}
 
@@ -338,11 +388,10 @@ const ChatApp = () => {
                 <button
                   key={i}
                   onClick={() => handleActivitySelect(act)}
-                  className={`text-sm px-3 py-1.5 rounded-full font-medium transition-all duration-200 ${
-                    selected
-                      ? "bg-emerald-500 text-white scale-[1.02]"
-                      : "bg-blue-100 hover:bg-blue-200 text-blue-700"
-                  }`}
+                  className={`text-sm px-3 py-1.5 rounded-full font-medium transition-all duration-200 ${selected
+                    ? "bg-emerald-500 text-white scale-[1.02]"
+                    : "bg-blue-100 hover:bg-blue-200 text-blue-700"
+                    }`}
                 >
                   {selected ? `✅ ${act}` : act}
                 </button>
@@ -361,11 +410,10 @@ const ChatApp = () => {
             <button
               onClick={confirmSelection}
               disabled={!state.selected_activities?.length}
-              className={`text-white text-sm px-4 py-1.5 rounded-full font-semibold ${
-                state.selected_activities?.length
-                  ? "bg-blue-700 hover:bg-blue-800"
-                  : "bg-blue-400 cursor-not-allowed opacity-70"
-              }`}
+              className={`text-white text-sm px-4 py-1.5 rounded-full font-semibold ${state.selected_activities?.length
+                ? "bg-blue-700 hover:bg-blue-800"
+                : "bg-blue-400 cursor-not-allowed opacity-70"
+                }`}
             >
               Confirmar Reserva
             </button>
@@ -391,31 +439,16 @@ const ChatApp = () => {
           <button
             onClick={sendMessage}
             disabled={isLoading || !input.trim()}
-            className={`px-6 py-2 rounded-xl text-lg font-bold ${
-              isLoading || !input.trim()
-                ? "bg-gray-400 cursor-not-allowed"
-                : "bg-blue-600 hover:bg-blue-700 text-white"
-            }`}
+            className={`px-6 py-2 rounded-xl text-lg font-bold ${isLoading || !input.trim()
+              ? "bg-gray-400 cursor-not-allowed"
+              : "bg-blue-600 hover:bg-blue-700 text-white"
+              }`}
           >
             Enviar
           </button>
         </div>
       )}
 
-      {/* 🧩 Debug */}
-      <div className="mt-4 w-full max-w-2xl">
-        <button
-          onClick={() => setShowDebug(!showDebug)}
-          className="text-xs text-gray-600 hover:text-blue-600 mb-1"
-        >
-          {showDebug ? "Ocultar Estado (Debug)" : "Mostrar Estado (Debug)"}
-        </button>
-        {showDebug && (
-          <div className="bg-gray-800 text-green-400 rounded-lg p-3 text-xs overflow-x-auto">
-            <pre>{JSON.stringify(state, null, 2)}</pre>
-          </div>
-        )}
-      </div>
     </main>
   );
 };

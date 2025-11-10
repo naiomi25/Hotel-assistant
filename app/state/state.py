@@ -47,6 +47,6 @@ def initial_state() -> AgentState:
         "city_guide": None,
         "waiting_for_selection": False,
         "waiting_for_room": False,
-        "waiting_for_transport": False,  # ⭐ AÑADIR AL ESTADO INICIAL
+        "waiting_for_transport": False,  
         "transport_response": None,
     }

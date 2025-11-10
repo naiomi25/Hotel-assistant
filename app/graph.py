@@ -47,6 +47,26 @@ def condicional_funcion_activities(state: InitialState) -> str:
     return "outdoor" if state["weather_filter"] == "sol" else "indoor"
 
 
+def condicional_transport_ready(state: InitialState) -> str:
+    """
+    Decide si continuar o esperar después del nodo transport_offer.
+    Igual que condicional_is_guest_info_ready pero para transporte.
+    """
+    waiting = state.get("waiting_for_transport", False)
+
+    print(f"🔍 [DEBUG] condicional_transport_ready:")
+    print(f"   - waiting_for_transport: {waiting}")
+
+    # PRIORIDAD 1: Si waiting_for_transport es True, siempre esperar
+    if waiting:
+        print(f"   ➡️ Resultado: 'wait' (esperando respuesta transporte)")
+        return "wait"
+
+    # PRIORIDAD 2: Si NO está esperando, continuar
+    print(f"   ➡️ Resultado: 'ready' (respuesta recibida)")
+    return "ready"
+
+
 def condicional_process_result(state: InitialState) -> str:
     """
     Decide la siguiente acción después de que el recepcionista ha respondido.
@@ -81,8 +101,10 @@ def build_graph():
     builder.add_node("process_human_response", nodo_process_human_response)
     builder.add_node("booking_confirm", nodo_booking_confirm)
     builder.add_node("city", nodo_city)
+    builder.add_node("city_delay", lambda state: state)
     builder.add_node("transport_offer", nodo_transport_offer)
     builder.add_node("transport_response", nodo_transport_response)
+    builder.add_node("await_transport_response", lambda state: state)
 
     # Definimos las transiciones
 
@@ -124,19 +146,28 @@ def build_graph():
         "process_human_response",
         condicional_process_result,
         {
-            "city_fallback": "city",  # Si NO hay disponibilidad
+            "city_fallback": "city_delay",  # Si NO hay disponibilidad
             "confirm": "booking_confirm",  # Si SÍ hay disponibilidad
         },
     )
-
+    builder.add_edge("city_delay", "city")
     # 8. Rama de Confirmación
     builder.add_edge("booking_confirm", END)
 
     # 9. Rama de Ciudad (Fallback o Elección)
     builder.add_edge("city", "transport_offer")
-    builder.add_edge("transport_offer", END)  # -> Espera respuesta de transporte
-
-    # 10. Tras la respuesta de transporte, finaliza
+    
+    # 10. Transporte: igual que habitación
+    builder.add_conditional_edges(
+        "transport_offer",
+        condicional_transport_ready,
+        {
+            "ready": "transport_response",  # Si respondió, continuar
+            "wait": END,  
+        },
+    )
+    
+    # 11. Tras la respuesta de transporte, finaliza
     builder.add_edge("transport_response", END)
 
     graph = builder.compile(checkpointer=memory_saver)

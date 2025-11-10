@@ -373,7 +373,7 @@ def resume_conversation():
         logger.info(f"✅ Disponibles: {available}")
         logger.info(f"❌ No disponibles: {unavailable}")
 
-        # ⭐ CRÍTICO: Para reanudar un interrupt, simplemente invoca con el input de resumir
+        # ⭐ Reanudar interrupt con valor de respuesta humana
         resume_value = {
             "available_activities": available,
             "unavailable_activities": unavailable,
@@ -382,24 +382,32 @@ def resume_conversation():
 
         logger.info(f"🔄 Reanudando interrupt con valor: {resume_value}")
 
-        # Verificar si hay un interrupt pendiente
+        # Config de sesión
         config = {"configurable": {"thread_id": session_id}}
 
-        # Usar stream para manejar interrupts correctamente
-        logger.info("🔍 Verificando estado de interrupt...")
-
-        # Importar Command para resumir correctamente
         from langgraph.types import Command
 
         try:
-            # Verificar estado del grafo
+            # Verificar estado del grafo antes de resumir
             current_state = app_graph.get_state(config)
             logger.info(
                 f"📊 Estado del grafo antes de resumir: {getattr(current_state, 'next', 'N/A')}"
             )
 
-            # ⭐ USAR Command(resume=...) según documentación oficial
+            # Reanudar correctamente con Command(resume=...)
             result = app_graph.invoke(Command(resume=resume_value), config=config)
+            try:
+                state_snapshot = app_graph.get_state(config)
+                logger.info(f"🧠 DEBUG_STATE_NEXT: {getattr(state_snapshot, 'next', None)}")
+                if hasattr(state_snapshot, "values"):
+                    logger.info(f"🧠 DEBUG_STATE_VALUES_KEYS: {list(state_snapshot.values.keys())}")
+                    if "messages" in state_snapshot.values:
+                        logger.info(f"🧠 DEBUG_MESSAGES_LEN: {len(state_snapshot.values['messages'])}")
+                        # Muestra los últimos 3 mensajes para ver el orden
+                        for i, msg in enumerate(state_snapshot.values['messages'][-3:]):
+                            logger.info(f"🧠 MSG[{i}] {msg}")
+            except Exception as debug_e:
+                logger.warning(f"⚠️ No se pudo obtener snapshot del estado: {debug_e}")
 
         except Exception as e:
             logger.error(f"❌ Error durante resume: {e}", exc_info=True)
@@ -420,15 +428,19 @@ def resume_conversation():
         response_data = {
             "status": "resumed",
             "assistant_message": assistant_message,
-            "pdf_url": new_state.get("city_guide"),  # ⭐ AÑADIR PDF_URL
+            "pdf_url": new_state.get("city_guide"),
             "state": new_state,
         }
-
+     
         logger.info("✅ Sesión reanudada correctamente")
+
+
         logger.info(f"📄 PDF URL generado: {new_state.get('city_guide')}")
         logger.info(f"💬 Mensaje final: {assistant_message[:100]}...")
+
         return jsonify(response_data)
 
     except Exception as e:
         logger.error(f"❌ Error en resume: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
+
