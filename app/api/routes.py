@@ -1,209 +1,434 @@
-from flask import Blueprint, request, jsonify, current_app, send_file
-from app.config import settings
-from app.nodes.nodo_transport_offer import nodo_transport_offer
-from app.nodes.nodo_booking_confirm import nodo_booking_confirm
-from app.nodes.nodo_city import nodo_city
-from app.nodes.nodo_activities import nodo_activities
-from app.nodes.nodo_antivities_outdoor import nodo_activities_outdoor
-
-from app.nodes.nodo_weather import nodo_weather
+from flask import Blueprint, request, jsonify
+from flask_cors import CORS
+import uuid
+import re
+from app.graph import app_graph
 from app.state.state import initial_state
-from app.state.state import InitialState
-from app.nodes.nodo_guest_info import nodo_guest_info
-from app.nodes.nodo_check_human import nodo_check_human
-from app.nodes.nodo_transport_response import nodo_transport_response
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+from langgraph.types import Command  # ⭐ IMPORTANTE
+import logging
 
-import json
-import os
+api_bp = Blueprint("api", __name__, url_prefix="/api")
+CORS(api_bp)
 
-api_bp = Blueprint("api", __name__)
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# --- Funciones Auxiliares ---
+
+
+def extract_room_number(text: str) -> str:
+    """Extrae el número de habitación del mensaje del usuario."""
+    match = re.search(r"\b\d{3,4}\b", text)
+    return match.group() if match else None
+
+
+def messages_to_json(messages):
+    """Convierte objetos LangChain Messages en dicts simples."""
+    serialized = []
+    for msg in messages:
+        role = getattr(msg, "type", "unknown")
+        content = getattr(msg, "content", str(msg))
+        serialized.append({"role": role, "content": content})
+    return serialized
+
+
+def _get_full_state(current_state, user_message=None):
+    """Construye el estado completo para LangGraph."""
+    base_state = {
+        "guest_info": current_state.get("guest_info", initial_state()["guest_info"]),
+        "weather": current_state.get("weather", ""),
+        "weather_description": current_state.get("weather_description", ""),
+        "weather_filter": current_state.get("weather_filter", ""),
+        "selected_activities": current_state.get("selected_activities", []),
+        "available_activities": current_state.get("available_activities", []),
+        "unavailable_activities": current_state.get("unavailable_activities", []),
+        "city_activities": current_state.get("city_activities", []),
+        "final_choice": current_state.get("final_choice", ""),
+        "city_guide": current_state.get("city_guide"),
+        "waiting_for_selection": current_state.get("waiting_for_selection", False),
+        "waiting_for_room": current_state.get("waiting_for_room", False),
+        "waiting_for_transport": current_state.get(
+            "waiting_for_transport", False   ), 
+        "transport_response": current_state.get("transport_response"), 
+        "human_response": current_state.get("human_response"),
+        "session_id": current_state.get("session_id"),
+    }
+
+    current_messages = current_state.get("messages", [])
+    if user_message:
+        base_state["messages"] = current_messages + [HumanMessage(content=user_message)]
+    else:
+        base_state["messages"] = current_messages
+
+    return base_state
+
+
+# --- ENDPOINTS ---
+
+
+@api_bp.route("/status/<session_id>", methods=["GET"])
+def get_session_status(session_id):
+    """Endpoint para que el frontend verifique si una sesión con interrupt terminó"""
+    try:
+        config = {"configurable": {"thread_id": session_id}}
+
+        # Obtener estado actual del grafo
+        state_snapshot = app_graph.get_state(config)
+
+        # Verificar si hay interrupt pendiente
+        has_interrupt = state_snapshot.next is not None and len(state_snapshot.next) > 0
+
+        # Obtener el estado actual
+        current_state = (
+            state_snapshot.values if hasattr(state_snapshot, "values") else {}
+        )
+
+        if not has_interrupt:
+            # No hay interrupt = el grafo terminó
+            assistant_message = ""
+            if current_state.get("messages"):
+                last_message = current_state["messages"][-1]
+                if hasattr(last_message, "content"):
+                    assistant_message = last_message.content
+                elif isinstance(last_message, dict) and "content" in last_message:
+                    assistant_message = last_message["content"]
+
+            # Convertir mensajes a formato JSON si es necesario
+            if current_state.get("messages"):
+                current_state["messages"] = messages_to_json(current_state["messages"])
+
+            return jsonify(
+                {
+                    "status": "completed",
+                    "has_interrupt": False,
+                    "assistant_message": assistant_message,
+                    "pdf_url": current_state.get("city_guide"),
+                    "state": current_state,
+                    "transport_info": current_state.get("transport_info"),
+                }
+            )
+        else:
+            # Todavía hay interrupt pendiente
+            return jsonify(
+                {
+                    "status": "waiting",
+                    "has_interrupt": True,
+                    "next_nodes": (
+                        list(state_snapshot.next) if state_snapshot.next else []
+                    ),
+                }
+            )
+
+    except Exception as e:
+        logger.error(
+            f"❌ Error obteniendo estado de sesión {session_id}: {e}", exc_info=True
+        )
+        return jsonify({"error": str(e)}), 500
+
 
 @api_bp.route("/start_conversation", methods=["POST"])
 def start_conversation():
-  
-    data = request.get_json() or {}
-    
-# recupero el estado o inicio uno nuevo
+    try:
+        data = request.get_json()
+        frontend_state = data.get("state", initial_state())
+        user_message = data.get("user_message", "")
 
-    state: InitialState = data.get("state") or initial_state()
-    user_message = data.get("user_message", "").strip()
-    
- # Guardar número de habitación
-    if user_message and user_message.isdigit():
-        state["guest_info"]["room"] = user_message
-        
-# registro
-    state.setdefault("messages", [])
-    state["messages"].append({"role": "user", "content": user_message})
-    
-# 1 nodo
-    state = nodo_guest_info(state)
-    
-# ¿tenemos ya habitación?
-    if state["guest_info"]["room"]:
-        state = nodo_weather(state)
-        if state["weather_filter"] == "lluvia":
-            state = nodo_activities(state)  # actividades indoor
-        else:
-            state = nodo_activities_outdoor(state)  # actividades outdoor
-            
-# Si el usuario selecciona actividades, verificamos su disponibilidad
-    if user_message.startswith("@select_multiple"):
-        payload = user_message.replace("@select_multiple", "").strip()
+        session_id = frontend_state.get("session_id")
+        if not session_id:
+            session_id = str(uuid.uuid4())
+            frontend_state["session_id"] = session_id
+
+        # ⭐ LEER SOLO CAMPOS ESPECÍFICOS DEL GRAFO (evitar conflictos)
+        config = {"configurable": {"thread_id": session_id}}
+        current_state = frontend_state.copy()  # Empezar con el estado del frontend
+
         try:
-            selected = json.loads(payload)
-        except Exception:
-            selected = [s.strip() for s in payload.split(",") if s.strip()]
+            graph_state_snapshot = app_graph.get_state(config)
+            if (
+                graph_state_snapshot
+                and hasattr(graph_state_snapshot, "values")
+                and graph_state_snapshot.values
+            ):
+                graph_values = graph_state_snapshot.values
 
-        # Guardamos las actividades seleccionadas
-        state.setdefault("selected_activities", [])
-        for act in selected:
-            if act not in state["selected_activities"]:
-                state["selected_activities"].append(act)
+                # ⭐ SOLO sincronizar campos específicos que necesitamos
+                if "waiting_for_transport" in graph_values:
+                    current_state["waiting_for_transport"] = graph_values[
+                        "waiting_for_transport"
+                    ]
+                if "waiting_for_room" in graph_values:
+                    current_state["waiting_for_room"] = graph_values["waiting_for_room"]
 
-        state["waiting_for_selection"] = False
+                logger.info(
+                    f"📊 Estado sincronizado del grafo para sesión: {session_id}"
+                )
+                logger.info(
+                    f"   - waiting_for_transport: {current_state.get('waiting_for_transport', False)}"
+                )
+            else:
+                logger.info(f"🆕 Nuevo estado para sesión: {session_id}")
+        except Exception as e:
+            logger.warning(f"⚠️ No se pudo leer estado del grafo: {e}")
+            # current_state ya es frontend_state, no hacemos nada
 
-        # Mensaje inicial
-        state["assistant_message"] = (
-            f"Perfecto — has seleccionado: {', '.join(state['selected_activities'])}."
-        )
-        state.setdefault("messages", []).append(
-            {"role": "assistant", "content": state["assistant_message"]}
-        )
+        if "guest_info" not in current_state:
+            current_state["guest_info"] = initial_state()["guest_info"]
 
-        # Validación del recepcionista
-        state = nodo_check_human(state)
-        pdf_url = None  # Seguridad
+        # ¿Esperando habitación?
+        waiting_for_room = current_state.get("waiting_for_room", False)
+        # ⭐ ¿Esperando respuesta de transporte?
+        waiting_for_transport = current_state.get("waiting_for_transport", False)
 
-        # ✅ Si hay disponibilidad → confirmar y limpiar
-        if state.get("available_activities"):
-            state = nodo_booking_confirm(state)
-            state["available_activities"] = []  # Limpieza visual
-            return jsonify({
-                "assistant_message": state["assistant_message"],
-                "state": state
-            })
+        if waiting_for_room:
+            logger.info("🔎 Esperando número de habitación...")
+            room_number = extract_room_number(user_message)
 
-        # 🚫 Si NO hay disponibles → primero la guía, luego transporte
-        else:
-            state = nodo_city(state)
+            if room_number:
+                logger.info(f"📋 Habitación detectada: {room_number}")
+                current_state["guest_info"]["room"] = room_number
+                current_state["waiting_for_room"] = False
+            else:
+                logger.info("⚠️ No se detectó habitación.")
+                return jsonify(
+                    {
+                        "assistant_message": "Por favor, indícame tu número de habitación (ejemplo: 305 o 1204).",
+                        "state": current_state,
+                        "pdf_url": None,
+                    }
+                )
 
-            # Mostramos primero el mensaje de la guía
-            guide_message = state["assistant_message"]
-            pdf_url = None
+        # ⭐ MANEJAR RESPUESTA DE TRANSPORTE
+        elif waiting_for_transport:
+            logger.info(f"🚗 Esperando respuesta de transporte: {user_message}")
 
-            if state.get("city_guide"):
-                pdf_filename = state["city_guide"]
-                pdf_url = f"http://127.0.0.1:5000/api/download/{pdf_filename}"
+            current_state["waiting_for_transport"] = False
+            current_state["transport_response"] = (
+                user_message  # ⭐ GUARDAR LA RESPUESTA EN EL ESTADO
+            )
 
-            # Limpiamos actividades
-            state["available_activities"] = []
+            # ⭐ SALTAR DIRECTAMENTE AL NODO transport_response
+            full_state = _get_full_state(current_state, user_message)
 
-            # Devolvemos la guía antes del transporte
-            response = {
-                "assistant_message": guide_message,
-                "pdf_url": pdf_url,
-                "state": state
-            }
+            result = app_graph.invoke(
+                Command(
+                    update=full_state,
+                    goto="transport_response",  
+                ),
+                config={"configurable": {"thread_id": session_id}},
+            )
 
-            # 🚕 A continuación (en segundo mensaje), Nayra ofrecerá transporte
-            state = nodo_transport_offer(state)
-            state["next_message"] = state["assistant_message"]
+            new_state = result if isinstance(result, dict) else current_state
+            new_state["session_id"] = session_id
 
-            # Agregamos esta bandera para que el front sepa que hay un mensaje pendiente
-            response["next_message"] = state["next_message"]
+            assistant_message = ""
+            if new_state.get("messages"):
+                last_message = new_state["messages"][-1]
+                if isinstance(last_message, (AIMessage, SystemMessage)):
+                    assistant_message = last_message.content
+                new_state["messages"] = messages_to_json(new_state["messages"])
 
-            return jsonify(response)
+            return jsonify(
+                {
+                    "status": "completed",
+                    "assistant_message": assistant_message,
+                    "state": new_state,
+                }
+            )
 
-    # Usuario indica que no le interesa ninguna actividad
-    if user_message.startswith("@none"):
-        state["selected_activities"] = []
-        state["waiting_for_selection"] = False
+        # ⭐ DETECCIÓN DE @select_multiple
+        if user_message.startswith("@select_multiple"):
+            logger.info("🎯 Comando @select_multiple detectado")
 
-        # Mensaje inicial
-        state["assistant_message"] = (
-            "Entendido. No te preocupes — podemos proponerte otras opciones más tarde."
-        )
-        state.setdefault("messages", []).append(
-            {"role": "assistant", "content": state["assistant_message"]}
-        )
+            import json
 
-        # Pasamos al nodo de guía turística
-        state = nodo_city(state)
-        pdf_url = None
+            try:
+                activities_json = user_message.replace("@select_multiple", "").strip()
+                selected_activities = json.loads(activities_json)
+                logger.info(f"📌 Actividades seleccionadas: {selected_activities}")
 
-        # Guardamos mensaje de la guía
-        guide_message = state["assistant_message"]
+                current_state["selected_activities"] = selected_activities
+                current_state["waiting_for_selection"] = False
 
-        if state.get("city_guide"):
-            pdf_filename = state["city_guide"]
-            pdf_url = f"http://127.0.0.1:5000/api/download/{pdf_filename}"
+                # ⭐ USAR COMMAND PARA SALTAR AL NODO select_activity
+                full_state = _get_full_state(current_state)
+                config = {"configurable": {"thread_id": session_id}}
 
-        # 🧹 Limpiamos actividades (para que desaparezcan los botones)
-        state["available_activities"] = []
+                # ⭐ EJECUTAR CON INVOKE (forma correcta según documentación)
+                result = app_graph.invoke(
+                    Command(
+                        update=full_state,
+                        goto="select_activity",  # Saltar directamente a este nodo
+                    ),
+                    config=config,
+                )
 
-        # Devolvemos primero el mensaje de la guía y el PDF
-        response = {
-            "assistant_message": guide_message,
-            "pdf_url": pdf_url,
-            "state": state
+                # ⭐ DESPUÉS DE INVOKE, VERIFICAR SI HAY INTERRUPT
+                state_after = app_graph.get_state(config)
+
+                if state_after.next:  # Hay nodos pendientes = interrupt
+                    logger.info(
+                        f"🛑 FRONTEND: Interrupt detectado - nodos pendientes: {state_after.next}"
+                    )
+
+                    return jsonify(
+                        {
+                            "status": "interrupted",
+                            "assistant_message": f"Perfecto, voy a consultar la disponibilidad de: {', '.join(selected_activities)}. Un momento por favor...",
+                            "state": current_state,
+                            "session_id": session_id,
+                        }
+                    )
+                else:
+                    logger.info(
+                        "✅ FRONTEND: No hay interrupt, grafo completado normalmente"
+                    )
+
+                # Si no hay interrupt, procesar normalmente
+                new_state = result if isinstance(result, dict) else current_state
+                new_state["session_id"] = session_id
+
+                assistant_message = ""
+                if new_state.get("messages"):
+                    last_message = new_state["messages"][-1]
+                    if isinstance(last_message, (AIMessage, SystemMessage)):
+                        assistant_message = last_message.content
+                    new_state["messages"] = messages_to_json(new_state["messages"])
+
+                return jsonify(
+                    {
+                        "status": "completed",
+                        "assistant_message": assistant_message,
+                        "state": new_state,
+                    }
+                )
+
+            except Exception as e:
+                logger.error(f"Error procesando @select_multiple: {e}", exc_info=True)
+                return jsonify({"error": f"Error: {str(e)}"}), 400
+
+        # Flujo NORMAL
+        logger.info(f"🚀 Ejecutando grafo normal para sesión: {session_id}")
+
+        full_state = _get_full_state(current_state, user_message)
+        config = {"configurable": {"thread_id": session_id}}
+
+        result = app_graph.invoke(full_state, config=config)
+
+        new_state = result if isinstance(result, dict) else current_state
+        new_state["session_id"] = session_id
+
+        assistant_message = ""
+        if new_state.get("messages"):
+            last_message = new_state["messages"][-1]
+            if isinstance(last_message, (AIMessage, SystemMessage)):
+                assistant_message = last_message.content
+            new_state["messages"] = messages_to_json(new_state["messages"])
+
+        response_data = {
+            "status": "completed",
+            "assistant_message": assistant_message,
+            "pdf_url": new_state.get("city_guide"),
+            "state": new_state,
         }
 
-        # 🚕 A continuación, Nayra ofrecerá el transporte
-        state = nodo_transport_offer(state)
-        state["next_message"] = state["assistant_message"]
+        return jsonify(response_data)
 
-        # Agregamos esta bandera para que el front sepa que hay un mensaje pendiente
-        response["next_message"] = state["next_message"]
-
-        return jsonify(response)
+    except Exception as e:
+        logger.error(f"❌ Error en start_conversation: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
 
 
-# 🚕 Si el huésped responde al transporte (ESTO SE MANTIENE ✅)
-   # 🚕 Si el huésped responde al transporte (aunque no mencione "taxi" explícitamente)
-    if any(word in user_message.lower() for word in ["taxi", "guagua", "transporte", "sí", "no", "vale", "claro", "gracias", "ok", "por favor", "mejor no"]):
+@api_bp.route("/resume", methods=["POST"])
+def resume_conversation():
+    try:
+        data = request.get_json()
+        session_id = data.get("session_id")
 
-    # 🧭 Detectar intención de transporte según palabras clave
-        positive = any(word in user_message.lower() for word in ["sí", "claro", "por favor", "ok", "vale"])
-        negative = any(word in user_message.lower() for word in ["no", "gracias", "mejor no"])
+        if not session_id:
+            return jsonify({"error": "session_id es requerido"}), 400
 
-        if positive:
-            state["transport_choice"] = "yes"
-            state = nodo_transport_response(state, accepted=True)
+        human_response = data.get("human_response", {})
+        raw_available = data.get("available_activities", [])
+        raw_unavailable = data.get("unavailable_activities", [])
 
-        elif negative:
-            state["transport_choice"] = "no"
-            state = nodo_transport_response(state, accepted=False)
+        logger.info(f"🔄 Reanudando sesión {session_id}")
+        logger.info(f"👂 human_response: {human_response}")
 
+        # Normalizar disponibilidad
+        available = []
+        unavailable = []
+
+        if isinstance(human_response, dict):
+            for act, val in human_response.items():
+                v = str(val).strip().lower()
+                if v in {"sí", "si", "yes", "true", "1", "s", "y"}:
+                    available.append(act)
+                else:
+                    unavailable.append(act)
         else:
-            # si menciona transporte sin especificar sí/no
-            state["assistant_message"] = "¿Podrías confirmarme si deseas que te reserve el transporte?"
+            available = raw_available if isinstance(raw_available, list) else []
+            unavailable = raw_unavailable if isinstance(raw_unavailable, list) else []
 
-        # 🚦 Aquí cerramos el flujo con el mensaje final
-        return jsonify({
-            "assistant_message": state["assistant_message"],
-            "state": state
-        })
+        logger.info(f"✅ Disponibles: {available}")
+        logger.info(f"❌ No disponibles: {unavailable}")
 
+        # ⭐ CRÍTICO: Para reanudar un interrupt, simplemente invoca con el input de resumir
+        resume_value = {
+            "available_activities": available,
+            "unavailable_activities": unavailable,
+            "human_response": human_response,
+        }
 
-    return jsonify({
-    "assistant_message": state.get("assistant_message", "No entendí tu mensaje, ¿podrías repetirlo?"),
-    "state": state
-})
-@api_bp.route("/download/<filename>", methods=["GET"])
-def download_file(filename):
-    # 🔍 Obtener la ruta absoluta al directorio raíz del proyecto
-    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))  # → app/
-    pdf_path = os.path.join(base_dir, "data_db", filename)
-    print(f"(debug) Ruta ABSOLUTA del PDF: {pdf_path}")
+        logger.info(f"🔄 Reanudando interrupt con valor: {resume_value}")
 
-    # 🔒 Comprobar si el archivo existe
-    if not os.path.exists(pdf_path):
-        return jsonify({"error": f"Archivo no encontrado: {pdf_path}"}), 404
+        # Verificar si hay un interrupt pendiente
+        config = {"configurable": {"thread_id": session_id}}
 
-    # 📦 Enviar el archivo al cliente
-    return send_file(pdf_path)
-    
+        # Usar stream para manejar interrupts correctamente
+        logger.info("🔍 Verificando estado de interrupt...")
 
-      
-           
+        # Importar Command para resumir correctamente
+        from langgraph.types import Command
+
+        try:
+            # Verificar estado del grafo
+            current_state = app_graph.get_state(config)
+            logger.info(
+                f"📊 Estado del grafo antes de resumir: {getattr(current_state, 'next', 'N/A')}"
+            )
+
+            # ⭐ USAR Command(resume=...) según documentación oficial
+            result = app_graph.invoke(Command(resume=resume_value), config=config)
+
+        except Exception as e:
+            logger.error(f"❌ Error durante resume: {e}", exc_info=True)
+            raise
+
+        # Procesar resultado
+        new_state = result if isinstance(result, dict) else {}
+        new_state["session_id"] = session_id
+        new_state["paused_at_node"] = None
+
+        assistant_message = ""
+        if new_state.get("messages"):
+            last_message = new_state["messages"][-1]
+            if isinstance(last_message, (AIMessage, SystemMessage)):
+                assistant_message = last_message.content
+            new_state["messages"] = messages_to_json(new_state["messages"])
+
+        response_data = {
+            "status": "resumed",
+            "assistant_message": assistant_message,
+            "pdf_url": new_state.get("city_guide"),  # ⭐ AÑADIR PDF_URL
+            "state": new_state,
+        }
+
+        logger.info("✅ Sesión reanudada correctamente")
+        logger.info(f"📄 PDF URL generado: {new_state.get('city_guide')}")
+        logger.info(f"💬 Mensaje final: {assistant_message[:100]}...")
+        return jsonify(response_data)
+
+    except Exception as e:
+        logger.error(f"❌ Error en resume: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500

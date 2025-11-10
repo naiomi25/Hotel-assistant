@@ -1,40 +1,37 @@
-from app.state.state import InitialState
+from app.state.state import AgentState
+from langgraph.types import interrupt
 
-
-def nodo_check_human(state: InitialState) -> InitialState:
-    
+def nodo_check_human(state: AgentState):
+    """
+    Nodo que pausa el flujo con interrupt() para validación humana.
+    Este es el VERDADERO human-in-the-loop pattern de LangGraph.
+    """
     selected = state.get("selected_activities", [])
+
     if not selected:
-        print("(debug) No hay actividades seleccionadas.")
-    
+        print("(debug) No hay actividades seleccionadas, omitiendo chequeo humano.")
         return state
 
-    available = []
-    unavailable = []
-
-    print("\n🔍 Comprobando disponibilidad...\n")
-
-    for activity in selected:
-        while True:
-            respuesta = input(f"¿Hay disponibilidad para '{activity}'? (s/n): ").strip().lower()
-            if respuesta == "s":
-                available.append(activity)
-                break
-            elif respuesta == "n":
-                unavailable.append(activity)
-                break
-            else:
-                print("Respuesta no válida. Escribe 's' o 'n'.")
-
-    state["available_activities"] = available
-    state["unavailable_activities"] = unavailable
+    print(f"🛑 [INTERRUPT] Pausando grafo para validación humana de: {selected}")
     
-    if available:
-        state["final_choice"] = ", ".join(available)
-        print(f"\n✅ Se han reservado automáticamente las siguientes actividades: {state['final_choice']}")
-        return state
-    state["final_choice"] = ""
-
-    print(f"\n✅ Disponibles: {available}")
-    print(f"❌ No disponibles: {unavailable}")
-    return state
+    
+    # El grafo se PAUSA aquí hasta que se reanude con Command(resume=...)
+    # value = interrupt({
+    #     "question": "¿Hay disponibilidad para las actividades seleccionadas?",
+    #     "selected_activities": selected,
+    #     "awaiting_confirmation": True
+    # })
+    updated = interrupt({
+        "question": "¿Hay disponibilidad para las actividades seleccionadas?",
+        "selected_activities": selected,
+    })
+    
+    # Cuando se reanude, 'value' contendrá la respuesta del humano
+    print(f"✅ [RESUME] Interrupt reanudado con respuesta: {updated}")
+    
+    # Devolver el estado actualizado con la respuesta
+    return {
+        "available_activities": updated.get("available_activities", []),
+        "unavailable_activities": updated.get("unavailable_activities", []),
+        "human_response": updated.get("human_response"),
+    }
