@@ -1,49 +1,49 @@
+# visto
+
 from typing import Dict, Any
-
-from click import prompt
-from app import state
 from app.llm.llm import generate_response
-from app.state.state import InitialState
+from app.state.state import AgentState  # Usamos el nuevo AgentState
 from app.data_db.guests import GUESTS
-from app.prompts.prompts import wellcome_prompt, initial_welcome_prompt
+from app.prompts.prompts import welcome_prompt, initial_welcome_prompt
+from langchain_core.messages import AIMessage
 
-def nodo_guest_info(state: InitialState, room_number: str = None) -> InitialState:
-    
+
+def nodo_guest_info(state: AgentState) -> AgentState:
+
     
     room_number = state.get("guest_info", {}).get("room")
 
     if not room_number:
-        prompt = initial_welcome_prompt()
-        ai_message = generate_response(prompt)
-        state.setdefault("messages", [])
-        state["messages"].append({"role": "assistant", "content": ai_message})
-        state["assistant_message"] = ai_message
-        return state
+        ai_message = generate_response(initial_welcome_prompt())
+        print(
+            f"🏠 [DEBUG] nodo_guest_info: No hay habitación, devolviendo waiting_for_room=True"
+        )
+        return {
+            "messages": [AIMessage(content=ai_message)],
+            "guest_info": state.get("guest_info", {}),
+            "waiting_for_room": True,
+        }
 
-    
     guest_data = GUESTS.get(room_number)
-    
+
     if not guest_data:
         message = f"No se encontró información para la habitación {room_number}. Por favor, acércate a recepción."
-        state.setdefault("messages", [])
-        state["messages"].append({"role": "assistant", "content": message})
-        state["assistant_message"] = message
-        return state
+        return {"messages": [AIMessage(content=message)]}
 
     # Actualizamos el estado con la info del huésped
-    state["guest_info"]["name"] = guest_data["guest_name"]
-    state["guest_info"]["has_children"] = guest_data["has_children"]
+    current_guest_info = state["guest_info"]
+    current_guest_info["name"] = guest_data["guest_name"]
+    current_guest_info["has_children"] = guest_data["has_children"]
+    current_guest_info["room"] = room_number
 
-    prompt = wellcome_prompt(state)
-    ai_message = generate_response(prompt)
-    state["assistant_message"] = ai_message
-    state.setdefault("messages", [])
-    state["messages"].append({
-        "role": "assistant",
-        "content": ai_message
-    })
+    # 2. Generamos el mensaje
+    ai_message = generate_response(welcome_prompt(state))
     
-    print(f"(paradebug) Bienvenido/a {guest_data['guest_name']} (habitación {room_number})!")
-    print(f"(paradebug)Tiene hijos: {'Sí' if guest_data['has_children'] else 'No'}")
-    print(f"(debug) Nodo GUEST INFO devuelve claves: {list(state.keys())}")
-    return state
+    print(f"(debug) Nodo GUEST INFO ejecutado.")
+
+   
+    return {
+        "messages": [AIMessage(content=ai_message)],
+        "guest_info": current_guest_info,
+        "waiting_for_room": False,  
+    }

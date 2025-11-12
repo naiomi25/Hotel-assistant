@@ -1,19 +1,17 @@
-from typing import Dict, List, Optional, TypedDict
+from typing import Annotated, List, Optional, TypedDict
+from langchain_core.messages import BaseMessage 
+import operator 
 
 class UserInfo(TypedDict):
     name: str
     has_children: bool
     room: str
 
-class Message(TypedDict):
-    role: str
-    content: str
-
-class InitialState(TypedDict):
+class AgentState(TypedDict):
+    
+    messages: Annotated[List[BaseMessage], operator.add]
     
     guest_info: UserInfo
-    assistant_message: Optional[str]
-    messages: List[Message]
     weather: str
     weather_description: str
     weather_filter: str
@@ -23,10 +21,14 @@ class InitialState(TypedDict):
     city_activities: List[str]
     final_choice: str
     city_guide: Optional[str]
-    
+    waiting_for_selection: bool 
+    waiting_for_room: bool
+    waiting_for_transport: bool  
+    transport_response: Optional[str]  
+    human_response: Optional[dict[str, str]]
 
-def initial_state() -> InitialState:
-   
+def initial_state() -> AgentState:
+
     return {
         "guest_info": {
             "name": "",
@@ -34,7 +36,6 @@ def initial_state() -> InitialState:
             "room": "",
         },
         'messages': [],
-        "assistant_message": None,
         "weather": "",
         "weather_description": "",
         "weather_filter": "",
@@ -44,4 +45,8 @@ def initial_state() -> InitialState:
         "city_activities": [],
         "final_choice": "",
         "city_guide": None,
+        "waiting_for_selection": False,
+        "waiting_for_room": False,
+        "waiting_for_transport": False,  
+        "transport_response": None,
     }

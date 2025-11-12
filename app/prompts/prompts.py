@@ -1,154 +1,130 @@
-from app.state import state
-from app.state.state import InitialState
 
-# Nodo 1 - Bienvenida
+from app.state.state import AgentState
+# --- 1. Flujo de Bienvenida ---
 
 def initial_welcome_prompt() -> str:
-        return """
-Eres el **asistente virtual del Hotel Sol y Mar**. 
-Tu trabajo es recibir a los huéspedes que acaban de llegar y ayudarlos a disfrutar su estancia. 
-Hablas en primera persona como un empleado amable del hotel (por ejemplo: “Bienvenido/a”, “será un placer ayudarte”).
+    """Solicita el número de habitación. (Se ejecuta antes de tener la info de huésped)."""
+    return (
+        "Tarea: Saluda amablemente al huésped y pide su número de habitación para "
+        "darle una atención personalizada. Sé breve y cortés."
+    )
 
-➡️ Objetivo en este momento:
-Saludar con calidez y pedir el número de habitación del huésped para poder continuar con la atención personalizada.
-
-⚠️ No menciones que eres una inteligencia artificial ni que no tienes cuerpo físico. 
-Simplemente actúa como un asistente de hotel profesional y cercano.
-"""
-
-
-# Prompt de bienvenida personalizado: se llama después de tener la info del huésped
-
-def wellcome_prompt(state: InitialState) -> str:
+def welcome_prompt(state: AgentState) -> str:
+    """Bienvenida personalizada (se ejecuta después de obtener la info del huésped)."""
     guest_name = state["guest_info"]["name"]
     has_children = "Sí" if state["guest_info"]["has_children"] else "No"
-   
-    return f"""
-Eres el **asistente virtual del Hotel Sol y Mar**.
-
-El huésped se llama **{guest_name}** y viaja con niños: {has_children}.
-Tu tarea es **darle una bienvenida personalizada** 
-Usa un tono cálido y natural, como si lo recibieras en recepción. 
-No hables de tecnología, IA o sistemas: solo del hotel, la experiencia y las actividades.
-
-Comienza tu mensaje directamente con un saludo al huésped. 
-Por ejemplo:
-“¡Hola {guest_name}!  Qué gusto tenerte aquí. …”
-"""
-
     
-# Nodo 3 - mostramos las actividades dependiendo del clima y si viaja con niños
-
-def activities_prompt_outdoor(state):
-  
     return f"""
-Eres un asistente de hotel amistoso y cercano.
-Tienes esta información sobre el huésped:
+Contexto: El huésped se llama **{guest_name}** y viaja con niños: {has_children}.
+Tarea: Dale una bienvenida cálida y personalizada, mencionando su nombre y deseándole una feliz estancia.
+"""
 
-# - Nombre: {state['guest_info']['name']}
+# --- 2. Flujo de Actividades ---
+
+def activities_prompt_outdoor(state) -> str:
+    """Ofrece actividades al aire libre."""
+    activities = state.get('available_activities', [])
+    
+    return f"""
+Contexto:
+- Huésped: {state['guest_info']['name']}
 - Viaja con niños: {'Sí' if state['guest_info']['has_children'] else 'No'}
-- Hoy hace buen tiempo: {state['weather_description']}, {state['weather']}°C.
-- Actividades disponibles: {', '.join(state['available_activities'])}
-tu tarea:
-MUESTRA SOLO esta lista de actividades disponibles (no inventes otras):
+- Clima: {state['weather_description']} ({state['weather']}°C). Es perfecto para planes al aire libre.
 
-Instrucciones para tu respuesta:
-- Tono cercano y natural (una o dos frases intro con referencia al clima).
-- Luego presenta la lista ANTERIOR en formato numerado (1., 2., 3.) exactamente con esos nombres.
-- Pide que elija una o varias.
-- No añadas actividades que no estén en la lista. No hables de “otras opciones”.
+Tarea:
+1.  Haz un comentario positivo sobre el buen clima.
+2.  Muestra la lista de actividades al aire libre **exactamente como sigue**, numerada (1., 2., 3...).
+3.  Pide al huésped que elija una o varias actividades de la lista.
+Lista: {', '.join(activities)}
 """
 
-def activities_prompt_indoor(state):
-    return f"""Eres un asistente del Hotel Sol y Mar.
-El clima hoy es {state['weather_description']} con {state['weather']}°C, así que es mejor disfrutar de planes bajo techo.
-El huésped es {state['guest_info']['name']} y {'viaja con niños' if state['guest_info']['has_children'] else 'viaja sin niños'}.
-
-Redacta un mensaje acogedor y cercano, invitando al huésped a aprovechar las actividades interiores.
-Las actividades recomendadas son: {', '.join(state['available_activities'])}.
-Instrucciones para tu respuesta:
-- Tono cercano y natural (una o dos frases intro con referencia al clima).
-- Luego presenta la lista ANTERIOR en formato numerado (1., 2., 3.) exactamente con esos nombres.
-- Pide que elija una o varias.
-- No añadas actividades que no estén en la lista. No hables de “otras opciones”.
-Pregunta cuál prefiere realizar hoy.
-"""
-
-# mensaje para confirmar la reserva de actividades
-def selected_activities_prompt(state):
+def activities_prompt_indoor(state) -> str:
+    """Ofrece actividades interiores."""
+    activities = state.get('available_activities', [])
+    
     return f"""
-Eres el asistente del Hotel Sol y Mar.
-El huésped se llama {state['guest_info']['name']}.
+Contexto:
+- Huésped: {state['guest_info']['name']}
+- Viaja con niños: {'Sí' if state['guest_info']['has_children'] else 'No'}
+- Clima: {state['weather_description']} ({state['weather']}°C). Sugiere planes interiores.
 
-Estas actividades **han sido confirmadas y reservadas**:
-- {", ".join(state['selected_activities'])}
-
-Tu tarea:
-- Redacta un mensaje cálido, cercano y humano.
-- Menciona brevemente por qué cada actividad es una buena elección.
-- Si el huésped viaja con niños, comenta algo amable para ellos.
-- No menciones tecnología ni artificialidad.
-- Debe sonar a un asistente real del hotel.
--Indícale que en recepción estamos a su disposición para cualquier cosa que necesite.
-
-Comienza directamente hablando al huésped, por su nombre.
+Tarea:
+1.  Menciona amablemente el clima y sugiere que es el momento perfecto para disfrutar de la comodidad del hotel.
+2.  Muestra la lista de actividades interiores **exactamente como sigue**, numerada (1., 2., 3...).
+3.  Pide al huésped que elija una o varias actividades.
+Lista: {', '.join(activities)}
 """
-# mensaje para cuando no hay disponibles actividades
 
-def no_available_activities_prompt(state):
-    return f"""El huésped se llama {state['guest_info']['name']} y no hemos encontrado disponibilidad para las actividades seleccionadas.
-Tu tarea:
-- Redacta un mensaje cálido, cercano y humano.
-- Si el huésped viaja con niños, comenta algo amable para ellos.
-- No menciones tecnología ni artificialidad.
-- Debe sonar a un asistente real del hotel.
+# --- 3. Flujo de Confirmación/Fallback (Tras Pausa Asíncrona) ---
 
-Tu tarea:
-• Adapta tu mensaje a si viaja con niños o no
-• Mantén tono cercano, amable y natural — como hablarías en recepción
-No menciones tecnología ni que eres un asistente digital.
-vas a sugerirle actividades para hacer en la ciudad a través de una guía descargable a cambio de no tener actividades disponibles en el hotel.
-Recuerda desearle una buena estancia al final del mensaje.
-ademas deberas pedirle al cliente si quiere que le reservemos un taxi para su traslado.
-"""
-# mensaje para cuando el huésped no selecciona actividades
-def no_selected_activities_prompt(state) :
+def selected_activities_prompt(state) -> str:
+    """Mensaje para confirmar la reserva de actividades (hay disponibilidad)."""
+    confirmed = state['available_activities']
+    
     return f"""
-  
-Eres el asistente del Hotel Sol y Mar.
-El huésped se llama {state['guest_info']['name']} y ha decidido no realizar actividades dentro del hotel.
-Tu tarea:
-- Redacta un mensaje cálido, cercano y humano.
-- Menciona brevemente por qué cada actividad es una buena elección.
-- Si el huésped viaja con niños, comenta algo amable para ellos.
-- No menciones tecnología ni artificialidad.
-- Debe sonar a un asistente real del hotel.
+Contexto: El huésped {state['guest_info']['name']} viaja con niños: {'Sí' if state['guest_info']['has_children'] else 'No'}.
+Actividades **reservadas y confirmadas**: {", ".join(confirmed)}
 
-Tu tarea:
-• Adapta tu mensaje a si viaja con niños o no
-• Mantén tono cercano, amable y natural — como hablarías en recepción
-No menciones tecnología ni que eres un asistente digital.
-vas a sugerirle actividades para hacer en la ciudad a través de una guía descargable que le proporcionarás al huésped.
-Recuerda desearle una buena estancia al final del mensaje.
-ademas deberas pedirle al cliente si quiere que le reservemos un taxi para su traslado .
+Tarea:
+1.  Redacta un mensaje cálido confirmando la reserva.
+2.  Menciona que estas actividades son excelentes elecciones.
+3.  Si viaja con niños, añade un comentario amable para ellos.
+4.  Recuérdale que Recepción está disponible para cualquier otra cosa.
+5.  Despídete con una nota amable y de cortesía.
 """
-# mensaje para ofrecerle transporte al cliente
-def offer_transport_prompt(state):
-    return f""" Eres el asistente del Hotel Sol y Mar.
-El huésped se llama {state['guest_info']['name']}.El huésped acaba de recibir una guía con actividades fuera del hotel.
-Redacta un mensaje amable y cercano ofreciéndole reservar un transporte (taxi o guagua) 
-desde el hotel. Pregúntale si desea que hagas la reserva por él.
-Usa un tono natural y servicial.
+
+def no_available_activities_prompt(state) -> str:
+    """Mensaje cuando NO hay disponibilidad para las actividades solicitadas."""
+    return f"""
+Contexto: El huésped {state['guest_info']['name']} viaja con niños: {'Sí' if state['guest_info']['has_children'] else 'No'}.
+Las actividades seleccionadas no tienen disponibilidad.
+
+Tarea:
+no saludes de nuevo al huésped.
+1.  Disculpa brevemente la falta de disponibilidad.
+2.  Menciona que, en su lugar, le vas a proporcionar la guía de la ciudad con actividades fuera del hotel (esto será la mejor alternativa).
+3.  Si viaja con niños, añade un comentario amable.
 """
-def response_ok_transport_prompt(state):
-    return f""" Eres el asistente del Hotel Sol y Mar.
-El huésped se llama {state['guest_info']['name']}. El huésped ha aceptado el transporte.
-Redacta un mensaje confirmando la reserva del taxi o guagua,
-mostrando amabilidad y eficiencia, y deseándole un buen día.
+
+def no_selected_activities_prompt(state) -> str:
+    """Mensaje cuando el huésped elige ir a la ciudad desde el inicio."""
+    return f"""
+Contexto: El huésped {state['guest_info']['name']} decidió no realizar actividades dentro del hotel.
+
+Tarea:
+1.  Agradece su respuesta con amabilidad.
+2.  Indica que le vas a ofrecer una guía turística con planes fuera del hotel que puede descargar directamente.
+3.  Usa un tono servicial y cercano.
 """
-def response_refuse_transport_prompt(state):
-    return f""" Eres el asistente del Hotel Sol y Mar.
-El huésped se llama {state['guest_info']['name']}. El huésped ha rechazado el transporte.
-Redacta un mensaje cortés deseándole un excelente día y recordándole que 
-puede contactar recepción en cualquier momento si necesita algo.
+
+# --- 4. Flujo de Transporte ---
+
+def offer_transport_prompt(state) -> str:
+    """Oportunidad para ofrecer transporte a la ciudad."""
+    return f"""
+Contexto: El huésped {state['guest_info']['name']} acaba de recibir la guía turística.
+
+Tarea:
+no vuelvas a saludarla, Ofrécele reservar un transporte (taxi o guagua) desde el hotel con un tono servicial y amable. Pregúntale si le gustaría que se lo gestionemos.
+"""
+
+def response_ok_transport_prompt(state) -> str:
+    """Mensaje cuando el huésped acepta el transporte."""
+    return f"""
+Contexto: El huésped {state['guest_info']['name']} aceptó la oferta de transporte.
+
+Tarea:
+1.  Confirma amablemente la reserva del transporte.
+2.  Deséale un excelente día.
+3.  Recuérdale que en recepción pueden atenderle para cualquier otro servicio.
+"""
+
+def response_refuse_transport_prompt(state) -> str:
+    """Mensaje cuando el huésped rechaza el transporte."""
+    return f"""
+Contexto: El huésped {state['guest_info']['name']} prefirió no usar transporte.
+
+Tarea:
+1.  Agradécele con cortesía.
+2.  Recuérdale que puede contactar recepción si cambia de idea o necesita algo.
 """
