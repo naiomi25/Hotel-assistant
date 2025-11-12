@@ -6,14 +6,10 @@ from langchain_core.messages import AIMessage
 from typing import Dict
 
 def nodo_booking_confirm(state: AgentState) -> Dict:
-    """
-    Nodo final que genera el mensaje de confirmación de la reserva.
-    Solo se ejecuta si el recepcionista ha confirmado al menos una actividad.
-    """
+    
     
     available = state.get("available_activities", [])
-    
-    # Esta variable se usa para generar un mensaje final limpio
+   
     if available:
         final_choice = ", ".join(available)
         print(f"✅ Se han reservado las siguientes actividades: {final_choice}")

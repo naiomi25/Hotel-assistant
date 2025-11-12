@@ -337,12 +337,7 @@ const ChatApp = () => {
             {/* ⭐ Mostrar session_id en el mensaje de interrupt */}
             {msg.isInterrupt && msg.session_id && isPausedForReceptionist && (
               <div className="mt-3 p-2 bg-yellow-100 border border-yellow-300 rounded text-xs">
-                {/* <p className="font-semibold text-yellow-900 mb-1">
-                  🔑 Código para recepcionista:
-                </p>
-                <code className="text-yellow-800 font-mono">
-                  {msg.session_id}
-                </code> */}
+               
                 <code className="bg-yellow-200 px-4 py-2 rounded-lg text-sm font-mono font-bold text-yellow-900 border border-yellow-300">
                   {session_id}
                 </code>

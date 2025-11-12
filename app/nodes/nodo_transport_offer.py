@@ -5,11 +5,7 @@ from langchain_core.messages import AIMessage
 
 
 def nodo_transport_offer(state: AgentState) -> AgentState:
-    """
-    Ofrece transporte al huésped y ESPERA su respuesta.
-    Usa el mismo patrón que waiting_for_room.
-    """
-
+   
     prompt = no_available_activities_prompt(state)
     ai_message = generate_response(prompt)
 

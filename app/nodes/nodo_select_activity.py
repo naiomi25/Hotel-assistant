@@ -23,6 +23,5 @@ def nodo_select_activity(state: AgentState, user_selection: list[str] = None) ->
     
     return {
         "selected_activities": selected_names,
-        # Resetear el flag de espera
         "waiting_for_selection": False 
     }

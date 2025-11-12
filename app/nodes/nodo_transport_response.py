@@ -1,23 +1,17 @@
 from app.state.state import AgentState
-from app.prompts.prompts import (
-    response_ok_transport_prompt,
-    response_refuse_transport_prompt,
-)
+from app.prompts.prompts import ( response_ok_transport_prompt,response_refuse_transport_prompt,)     
 from app.llm.llm import generate_response
 from langchain_core.messages import AIMessage
 
 
 def nodo_transport_response(state: AgentState) -> AgentState:
-    """
-    Procesa la respuesta del huésped sobre el transporte.
-    La respuesta ya está en los mensajes (agregada por la API).
-    """
+  
 
     # ⭐ OBTENER la respuesta del ÚLTIMO mensaje del usuario
     messages = state.get("messages", [])
     user_reply = ""
 
-    # Buscar el último mensaje humano
+    # Buscar el último mensaje 
     for msg in reversed(messages):
         if hasattr(msg, "type") and msg.type == "human":
             user_reply = msg.content
@@ -26,7 +20,7 @@ def nodo_transport_response(state: AgentState) -> AgentState:
     user_reply_clean = user_reply.lower().strip()
     print(f"🚗 (debug) Respuesta del huésped sobre transporte: '{user_reply_clean}'")
 
-    # Decidir qué prompt usar según la respuesta
+    #
     if any(
         word in user_reply_clean
         for word in [
@@ -50,9 +44,9 @@ def nodo_transport_response(state: AgentState) -> AgentState:
 
     print("✅ Nodo TRANSPORTE_RESPUESTA completado")
 
-    # ⭐ PRESERVAR todo el estado existente y solo agregar el mensaje del asistente
+    
     return {
-        **state,  # ⭐ CRÍTICO: Preservar todo el estado existente (session_id, etc.)
+        **state, 
         "messages": state["messages"] + [AIMessage(content=ai_message)],
-        "waiting_for_transport": False,  # ⭐ Asegurar que el flag esté limpio
+        "waiting_for_transport": False,  
     }

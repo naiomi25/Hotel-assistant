@@ -5,7 +5,7 @@ import re
 from app.graph import app_graph
 from app.state.state import initial_state
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
-from langgraph.types import Command  # ⭐ IMPORTANTE
+from langgraph.types import Command 
 import logging
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
@@ -69,7 +69,7 @@ def _get_full_state(current_state, user_message=None):
 
 @api_bp.route("/status/<session_id>", methods=["GET"])
 def get_session_status(session_id):
-    """Endpoint para que el frontend verifique si una sesión con interrupt terminó"""
+   
     try:
         config = {"configurable": {"thread_id": session_id}}
 
@@ -85,7 +85,7 @@ def get_session_status(session_id):
         )
 
         if not has_interrupt:
-            # No hay interrupt = el grafo terminó
+           
             assistant_message = ""
             if current_state.get("messages"):
                 last_message = current_state["messages"][-1]
@@ -94,7 +94,7 @@ def get_session_status(session_id):
                 elif isinstance(last_message, dict) and "content" in last_message:
                     assistant_message = last_message["content"]
 
-            # Convertir mensajes a formato JSON si es necesario
+            
             if current_state.get("messages"):
                 current_state["messages"] = messages_to_json(current_state["messages"])
 
@@ -109,7 +109,7 @@ def get_session_status(session_id):
                 }
             )
         else:
-            # Todavía hay interrupt pendiente
+          
             return jsonify(
                 {
                     "status": "waiting",
@@ -139,9 +139,9 @@ def start_conversation():
             session_id = str(uuid.uuid4())
             frontend_state["session_id"] = session_id
 
-        # ⭐ LEER SOLO CAMPOS ESPECÍFICOS DEL GRAFO (evitar conflictos)
+       
         config = {"configurable": {"thread_id": session_id}}
-        current_state = frontend_state.copy()  # Empezar con el estado del frontend
+        current_state = frontend_state.copy() 
 
         try:
             graph_state_snapshot = app_graph.get_state(config)
@@ -152,7 +152,7 @@ def start_conversation():
             ):
                 graph_values = graph_state_snapshot.values
 
-                # ⭐ SOLO sincronizar campos específicos que necesitamos
+               
                 if "waiting_for_transport" in graph_values:
                     current_state["waiting_for_transport"] = graph_values[
                         "waiting_for_transport"
@@ -170,14 +170,14 @@ def start_conversation():
                 logger.info(f"🆕 Nuevo estado para sesión: {session_id}")
         except Exception as e:
             logger.warning(f"⚠️ No se pudo leer estado del grafo: {e}")
-            # current_state ya es frontend_state, no hacemos nada
+            
 
         if "guest_info" not in current_state:
             current_state["guest_info"] = initial_state()["guest_info"]
 
-        # ¿Esperando habitación?
+        
         waiting_for_room = current_state.get("waiting_for_room", False)
-        # ⭐ ¿Esperando respuesta de transporte?
+        
         waiting_for_transport = current_state.get("waiting_for_transport", False)
 
         if waiting_for_room:
@@ -198,16 +198,14 @@ def start_conversation():
                     }
                 )
 
-        # ⭐ MANEJAR RESPUESTA DE TRANSPORTE
+        
         elif waiting_for_transport:
             logger.info(f"🚗 Esperando respuesta de transporte: {user_message}")
 
             current_state["waiting_for_transport"] = False
-            current_state["transport_response"] = (
-                user_message  # ⭐ GUARDAR LA RESPUESTA EN EL ESTADO
-            )
-
-            # ⭐ SALTAR DIRECTAMENTE AL NODO transport_response
+            current_state["transport_response"] = (  user_message    )
+              
+         
             full_state = _get_full_state(current_state, user_message)
 
             result = app_graph.invoke(
@@ -236,7 +234,7 @@ def start_conversation():
                 }
             )
 
-        # ⭐ DETECCIÓN DE @select_multiple
+        
         if user_message.startswith("@select_multiple"):
             logger.info("🎯 Comando @select_multiple detectado")
 
@@ -250,23 +248,23 @@ def start_conversation():
                 current_state["selected_activities"] = selected_activities
                 current_state["waiting_for_selection"] = False
 
-                # ⭐ USAR COMMAND PARA SALTAR AL NODO select_activity
+                
                 full_state = _get_full_state(current_state)
                 config = {"configurable": {"thread_id": session_id}}
 
-                # ⭐ EJECUTAR CON INVOKE (forma correcta según documentación)
+                
                 result = app_graph.invoke(
                     Command(
                         update=full_state,
-                        goto="select_activity",  # Saltar directamente a este nodo
+                        goto="select_activity",  
                     ),
                     config=config,
                 )
 
-                # ⭐ DESPUÉS DE INVOKE, VERIFICAR SI HAY INTERRUPT
+               
                 state_after = app_graph.get_state(config)
 
-                if state_after.next:  # Hay nodos pendientes = interrupt
+                if state_after.next: 
                     logger.info(
                         f"🛑 FRONTEND: Interrupt detectado - nodos pendientes: {state_after.next}"
                     )
@@ -284,7 +282,7 @@ def start_conversation():
                         "✅ FRONTEND: No hay interrupt, grafo completado normalmente"
                     )
 
-                # Si no hay interrupt, procesar normalmente
+                
                 new_state = result if isinstance(result, dict) else current_state
                 new_state["session_id"] = session_id
 
@@ -307,7 +305,7 @@ def start_conversation():
                 logger.error(f"Error procesando @select_multiple: {e}", exc_info=True)
                 return jsonify({"error": f"Error: {str(e)}"}), 400
 
-        # Flujo NORMAL
+        
         logger.info(f"🚀 Ejecutando grafo normal para sesión: {session_id}")
 
         full_state = _get_full_state(current_state, user_message)
@@ -373,7 +371,7 @@ def resume_conversation():
         logger.info(f"✅ Disponibles: {available}")
         logger.info(f"❌ No disponibles: {unavailable}")
 
-        # ⭐ Reanudar interrupt con valor de respuesta humana
+        
         resume_value = {
             "available_activities": available,
             "unavailable_activities": unavailable,
@@ -382,7 +380,7 @@ def resume_conversation():
 
         logger.info(f"🔄 Reanudando interrupt con valor: {resume_value}")
 
-        # Config de sesión
+        
         config = {"configurable": {"thread_id": session_id}}
 
         from langgraph.types import Command
@@ -394,7 +392,7 @@ def resume_conversation():
                 f"📊 Estado del grafo antes de resumir: {getattr(current_state, 'next', 'N/A')}"
             )
 
-            # Reanudar correctamente con Command(resume=...)
+            
             result = app_graph.invoke(Command(resume=resume_value), config=config)
             try:
                 state_snapshot = app_graph.get_state(config)
@@ -403,7 +401,7 @@ def resume_conversation():
                     logger.info(f"🧠 DEBUG_STATE_VALUES_KEYS: {list(state_snapshot.values.keys())}")
                     if "messages" in state_snapshot.values:
                         logger.info(f"🧠 DEBUG_MESSAGES_LEN: {len(state_snapshot.values['messages'])}")
-                        # Muestra los últimos 3 mensajes para ver el orden
+                        
                         for i, msg in enumerate(state_snapshot.values['messages'][-3:]):
                             logger.info(f"🧠 MSG[{i}] {msg}")
             except Exception as debug_e:
@@ -413,7 +411,7 @@ def resume_conversation():
             logger.error(f"❌ Error durante resume: {e}", exc_info=True)
             raise
 
-        # Procesar resultado
+        
         new_state = result if isinstance(result, dict) else {}
         new_state["session_id"] = session_id
         new_state["paused_at_node"] = None

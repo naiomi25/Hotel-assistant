@@ -58,3 +58,12 @@
 #     result = graph.invoke(state)
 #     print("Resultado del grafo (state):", result)
 
+# from dotenv import load_dotenv
+# load_dotenv()
+
+# from langchain_openai import ChatOpenAI
+
+# llm = ChatOpenAI(model="gpt-4o-mini")
+
+# response = llm.invoke("Hola, soy una prueba para LangSmith. Solo quiero saber si me ves 👀")
+# print(response.content)

@@ -24,6 +24,5 @@ def nodo_activities(state: AgentState) -> AgentState:
     return {
         "messages": [AIMessage(content=ai_message)],
         "available_activities": state["available_activities"],
-        # Establecemos un flag para que el front-end sepa que debe mostrar botones de selección
         "waiting_for_selection": True 
     }

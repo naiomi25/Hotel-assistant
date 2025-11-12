@@ -17,7 +17,7 @@ def nodo_check_human(state: AgentState):
         "selected_activities": selected,
     })
     
-    # Cuando se reanude, 'value' contendrá la respuesta del humano
+  
     print(f"✅ [RESUME] Interrupt reanudado con respuesta: {updated}")
     
     # Devolver el estado actualizado con la respuesta

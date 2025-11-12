@@ -23,8 +23,8 @@ class AgentState(TypedDict):
     city_guide: Optional[str]
     waiting_for_selection: bool 
     waiting_for_room: bool
-    waiting_for_transport: bool  # ⭐ NUEVO ESTADO
-    transport_response: Optional[str]  # ⭐ RESPUESTA DEL USUARIO SOBRE TRANSPORTE
+    waiting_for_transport: bool  
+    transport_response: Optional[str]  
     human_response: Optional[dict[str, str]]
 
 def initial_state() -> AgentState:
