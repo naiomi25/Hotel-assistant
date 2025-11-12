@@ -25,7 +25,7 @@ def generate_response(prompt: str) -> str:
         print("\n🧠 [LangChain] Generando respuesta con GPT-4o-mini...")
         print(f"📨 Prompt enviado (resumen): {prompt[:80]}...")
 
-        # Definimos el mensaje del sistema, igual que antes
+       
         system_prompt = (
             "Eres **Nayra**, la asistente virtual del **Hotel Horizonte Azul**, "
             "un hotel costero en Tenerife. Tu tono es cálido, profesional y natural, "
@@ -36,14 +36,14 @@ def generate_response(prompt: str) -> str:
             "Tu estilo es breve, claro y humano — siempre terminas tus mensajes con una nota amable o de cortesía."
         )
 
-        # Ejecutamos la llamada (LangSmith registrará esta invocación)
+       
         response = llm.invoke([
             ("system", system_prompt),
             ("user", prompt)
         ])
 
         answer = response.content.strip()
-        # answer = getattr(response, "content", str(response)).strip()
+       
 
         print("✅ [LangChain] Respuesta recibida correctamente.\n")
         return answer
