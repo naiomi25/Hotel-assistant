@@ -117,17 +117,9 @@ WEATHER_API_KEY=tu_weather_api_key  # Opcional
 4. Sugiere actividades según clima
 5. Usuario selecciona actividades
 6. Recepcionista valida disponibilidad (interrupt)
-7. Asistente ofrece transporte
 8. Genera guía turística PDF
+7. Asistente ofrece transporte
+9. Dependiendo de la respuesta sendespide de una forma u otra
 
 ## 👨‍💻 Desarrollo
 
-El proyecto está completamente modularizado:
-
-- Cada ruta de la API en su propio archivo
-- Componentes y hooks reutilizables en el frontend
-- Funcionalidad sin cambios, solo mejor organización
-
----
-
-**Branch actual**: `feature/api`
